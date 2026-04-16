@@ -12,7 +12,7 @@ function HistorySection({ participantId, planId, context, refreshKey }) {
       setLoading(true);
 
       try {
-        const url = new URL("http://localhost:8000/api/history/");
+        const url = new URL(`${import.meta.env.VITE_API_URL}/api/history/`);
 
         url.searchParams.append("participant_id", participantId);
 

@@ -35,9 +35,9 @@ function App() {
   // FETCH DATA
   useEffect(() => {
     async function fetchData() {
-      setParticipants(await (await fetch("http://localhost:8000/api/participants/")).json());
-      setPlans(await (await fetch("http://localhost:8000/api/plans/")).json());
-      setContexts(await (await fetch("http://localhost:8000/api/contexts/")).json());
+      setParticipants(await (await fetch(`${import.meta.env.VITE_API_URL}/api/participants/`)).json());
+      setPlans(await (await fetch(`${import.meta.env.VITE_API_URL}/api/plans/`)).json());
+      setContexts(await (await fetch(`${import.meta.env.VITE_API_URL}/api/contexts/`)).json());
     }
     fetchData();
   }, []);
@@ -51,7 +51,7 @@ function App() {
     e.preventDefault();
     setLoading(true);
 
-    const res = await fetch("http://localhost:8000/api/preview/", {
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/preview/`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
@@ -81,7 +81,7 @@ function App() {
     return;
   }
 
-  const res = await fetch("http://localhost:8000/api/simulate/", {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/simulate/`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
@@ -98,7 +98,7 @@ function App() {
 }
 
   async function handleFinalize() {
-  await fetch("http://localhost:8000/api/finalize/", {
+  await fetch(`${import.meta.env.VITE_API_URL}/api/finalize/`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
@@ -124,7 +124,7 @@ function App() {
 
   const metricId = metric[1].metric_id;
 
-  await fetch("http://localhost:8000/api/add-metric-value/", {
+  await fetch(`${import.meta.env.VITE_API_URL}/api/add-metric-value/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"

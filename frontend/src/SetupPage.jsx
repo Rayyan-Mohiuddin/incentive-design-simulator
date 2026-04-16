@@ -19,7 +19,7 @@ function SetupPage({ onSetupComplete }) {
 
   useEffect(() => {
     async function fetchContexts() {
-        const res = await fetch("http://localhost:8000/api/contexts/");
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/contexts/`);
         const data = await res.json();
         setContexts(data);
     }
@@ -49,7 +49,7 @@ function SetupPage({ onSetupComplete }) {
     }
 
     try {
-      const res = await fetch("http://localhost:8000/api/setup-system/", {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/setup-system/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -95,7 +95,7 @@ function SetupPage({ onSetupComplete }) {
   async function handleCreateContext() {
     if (!newContextName.trim()) return;
 
-    const res = await fetch("http://localhost:8000/api/contexts/create/", {
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/create/`, {
         method: "POST",
         headers: {
         "Content-Type": "application/json"
