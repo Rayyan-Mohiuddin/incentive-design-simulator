@@ -15,5 +15,6 @@ urlpatterns = [
     path("participants/", ParticipantListAPIView.as_view()),
     path("plans/", PlanListAPIView.as_view()),
     path("contexts/", ContextListAPIView.as_view()),
-    path("contexts/create/", CreateContextAPIView.as_view())
+    path("create-context/", CreateContextAPIView.as_view()),
+    path("metrics/", MetricListAPIView.as_view())
 ]

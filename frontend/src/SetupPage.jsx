@@ -59,7 +59,7 @@ function SetupPage({ onSetupComplete }) {
           plan_name: planName,
           fixed: Number(fixed),
           variable: Number(variable),
-          context: Number(context),
+          context: context,
 
           metrics: metrics.map(m => ({
             name: m.name,
@@ -95,7 +95,7 @@ function SetupPage({ onSetupComplete }) {
   async function handleCreateContext() {
     if (!newContextName.trim()) return;
 
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/create/`, {
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/create-context/`, {
         method: "POST",
         headers: {
         "Content-Type": "application/json"
@@ -104,6 +104,12 @@ function SetupPage({ onSetupComplete }) {
     });
 
     const data = await res.json();
+
+    if (!res.ok) {
+        console.error(data);
+        alert("Failed to create context");
+        return;
+    }
 
     setContexts(prev => [...prev, data]);
     setContext(data.id);  // auto-select new context
@@ -148,7 +154,7 @@ function SetupPage({ onSetupComplete }) {
         <select
             className="border p-2 w-full"
             value={context}
-            onChange={e => setContext(e.target.value)}
+            onChange={e => setContext(Number(e.target.value))}
         >
             <option value="">Select Context</option>
             {contexts.map(c => (

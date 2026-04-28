@@ -17,53 +17,93 @@ from .serializers import IncentiveCalculationSerializer
 from .services import calculate_incentive, analyze_shock
 
 
+from django.db import transaction
+
 class SetupSystemAPIView(APIView):
     def post(self, request):
         data = request.data
 
-        participant = Participant.objects.create(
-            name=data["participant_name"]
-        )
+        try:
+            with transaction.atomic():
 
-        plan = IncentivePlan.objects.create(
-            name=data["plan_name"],
-            fixed_base_amount=data["fixed"],
-            variable_base_amount=data["variable"]
-        )
+                # 🔹 Validate
+                if not data.get("participant_name"):
+                    return Response({"error": "participant_name required"}, status=400)
 
-        metric_ids = {}
+                if not data.get("plan_name"):
+                    return Response({"error": "plan_name required"}, status=400)
 
-        for m in data["metrics"]:
-            metric = Metric.objects.create(
-                name=m["name"],
-                min_value=m["min"],
-                max_value=m["max"],
-                aggr_method="AVG"
-            )
+                if not data.get("metrics") or not data.get("values"):
+                    return Response({"error": "metrics and values required"}, status=400)
 
-            metric_ids[m["name"]] = metric.id
+                # 🔹 Create participant
+                participant = Participant.objects.create(
+                    name=data["participant_name"]
+                )
 
-            Rule.objects.create(
-                plan=plan,
-                metric=metric,
-                weight=m["weight"],
-                is_active=True
-            )
+                # 🔹 Create plan
+                plan = IncentivePlan.objects.create(
+                    name=data["plan_name"],
+                    fixed_base_amount=data.get("fixed", 0),
+                    variable_base_amount=data.get("variable", 0)
+                )
 
-        context_obj = Context.objects.get(id=data.get("context"))
+                # 🔹 Context
+                context_id = data.get("context")
+                context_obj = Context.objects.filter(id=context_id).first()
 
-        for v in data["values"]:
-            MetricValue.objects.create(
-                participant=participant,
-                metric_id=metric_ids[v["metric"]],
-                value=v["value"],
-                context=context_obj
-            )
+                if not context_obj:
+                    return Response({"error": "Invalid context"}, status=400)
 
-        return Response({
-            "participant_id": participant.id,
-            "plan_id": plan.id
-        })
+                # 🔹 Metrics + Rules
+                metric_ids = {}
+
+                for m in data["metrics"]:
+                    name = m.get("name", "").strip()
+
+                    if not name:
+                        return Response({"error": "Metric name required"}, status=400)
+
+                    metric = Metric.objects.create(
+                        name=name,
+                        min_value=m.get("min"),
+                        max_value=m.get("max"),
+                        aggr_method="AVG"
+                    )
+
+                    metric_ids[name] = metric.id
+
+                    Rule.objects.create(
+                        plan=plan,
+                        metric=metric,
+                        weight=m.get("weight", 0),
+                        is_active=True
+                    )
+
+                # 🔹 Metric Values
+                for v in data["values"]:
+                    metric_name = v.get("metric", "").strip()
+
+                    if metric_name not in metric_ids:
+                        return Response(
+                            {"error": f"Metric '{metric_name}' not found"},
+                            status=400
+                        )
+
+                    MetricValue.objects.create(
+                        participant=participant,
+                        metric_id=metric_ids[metric_name],
+                        value=v.get("value", 0),
+                        context=context_obj
+                    )
+
+                return Response({
+                    "participant_id": participant.id,
+                    "plan_id": plan.id
+                })
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
 
 
 class CreateParticipantAPIView(APIView):
@@ -115,7 +155,10 @@ class CreateRuleAPIView(APIView):
 
 class AddMetricValueAPIView(APIView):
     def post(self, request):
-        context_obj = Context.objects.get(id=request.data.get("context"))
+        context_obj = Context.objects.filter(id=request.data.get("context")).first()
+
+        if not context_obj:
+            return Response({"error": "Invalid context"}, status=400)
 
         obj = MetricValue.objects.create(
             participant_id=request.data.get("participant_id"),
@@ -184,7 +227,15 @@ class IncentiveFinalizeAPIView(APIView):
 
         attempt = 1 if not last else last.attempt_number + 1
 
-        context_obj = Context.objects.get(id=data["context"])
+        context_id = data.get("context")
+
+        if not context_id:
+            return Response({"error": "Context is required"}, status=400)
+
+        context_obj = Context.objects.filter(id=context_id).first()
+
+        if not context_obj:
+            return Response({"error": "Invalid context ID"}, status=400)
 
         result = IncentiveResult.objects.create(
             participant=participant,
@@ -239,14 +290,17 @@ class IncentiveSimulateAPIView(APIView):
     def post(self, request):
         data = request.data
 
-        participant = get_object_or_404(Participant, id=data["participant_id"])
-        plan = get_object_or_404(IncentivePlan, id=data["incentive_plan_id"])
+        participant = get_object_or_404(Participant, id=data.get("participant_id"))
+        plan = get_object_or_404(IncentivePlan, id=data.get("incentive_plan_id"))
 
         base_context_id = data.get("base_context")
         shock_context_id = data.get("shock_context")
 
         if not base_context_id or not shock_context_id:
-            return Response({"error": "Both base_context and shock_context are required"}, status=400)
+            return Response(
+                {"error": "Both base_context and shock_context are required"},
+                status=400
+            )
 
         base_values = MetricValue.objects.filter(
             participant=participant,
@@ -260,7 +314,12 @@ class IncentiveSimulateAPIView(APIView):
 
         weight_overrides = data.get("weight_overrides", {})
 
-        base = calculate_incentive(participant, plan, base_values)
+        base = calculate_incentive(
+            participant,
+            plan,
+            base_values,
+            weight_overrides={}   
+        )
 
         simulated = calculate_incentive(
             participant,
@@ -269,7 +328,15 @@ class IncentiveSimulateAPIView(APIView):
             weight_overrides=weight_overrides
         )
 
+        if not simulated.get("metric_breakdown"):
+            return Response({
+                "error": "Metric breakdown empty. Check MetricValue or calculation logic."
+            }, status=400)
+
         shock_analysis = analyze_shock(base, simulated, weight_overrides)
+
+        print("BASE VALUES:", list(base_values.values()))
+        print("SHOCK VALUES:", list(shock_values.values()))
 
         return Response({
             **simulated,
@@ -320,3 +387,16 @@ class CreateContextAPIView(APIView):
             "id": context.id,
             "name": context.name
         })
+    
+
+class MetricListAPIView(APIView):
+    def get(self, request):
+        metrics = Metric.objects.all()
+        data = [
+            {
+                "id": m.id,
+                "name": m.name
+            }
+            for m in metrics
+        ]
+        return Response(data)

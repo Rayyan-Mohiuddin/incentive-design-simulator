@@ -7,75 +7,49 @@ def calculate_incentive(participant, incentive_plan, metric_values, weight_overr
 
     rules = Rule.objects.filter(plan=incentive_plan, is_active=True)
 
-    # 🔹 Collect metric values
-    metric_data = {}
-    for mv in metric_values:
-        metric_data.setdefault(mv.metric, []).append(mv.value)
-
-    # 🔹 Aggregate
-    aggr_data = {}
-    for metric, values in metric_data.items():
-        if not values:
-            continue
-
-        method = metric.aggr_method
-
-        if method == 'AVG':
-            aggr_data[metric] = sum(values) / len(values)
-        elif method == 'SUM':
-            aggr_data[metric] = sum(values)
-        elif method == 'MAX':
-            aggr_data[metric] = max(values)
-        elif method == 'MIN':
-            aggr_data[metric] = min(values)
-
-    # 🔹 Normalize
-    normalized_data = {}
-    for metric, value in aggr_data.items():
-        if (
-            metric.min_value is None
-            or metric.max_value is None
-            or metric.min_value == metric.max_value
-        ):
-            normalized_data[metric] = 1.0
-            continue
-
-        normalized = (value - metric.min_value) / (metric.max_value - metric.min_value)
-        normalized = max(0.0, min(1.0, normalized))
-
-        normalized_data[metric] = normalized
-
-    # 🔹 Score
     score = 0
     met_breakdown = {}
 
     for rule in rules:
-        metric_name = rule.metric.name
-        weight = weight_overrides.get(metric_name, rule.weight)
+        metric = rule.metric
+        metric_name = metric.name
 
-        if rule.metric not in normalized_data:
+        # ✅ find matching metric value directly
+        mv = None
+
+        for val in metric_values:
+            if val.metric.name == metric.name:
+                mv = val
+                break
+
+        if not mv:
             continue
 
-        contribution = normalized_data[rule.metric] * (weight / 100)
+        raw = mv.value
+
+        # normalize safely
+        if metric.min_value is not None and metric.max_value is not None and metric.max_value != metric.min_value:
+            normalized = (raw - metric.min_value) / (metric.max_value - metric.min_value)
+            normalized = max(0, min(1, normalized))
+        else:
+            normalized = 1
+
+        weight = weight_overrides.get(metric_name, rule.weight)
+
+        contribution = normalized * (weight / 100)
         score += contribution
 
         met_breakdown[metric_name] = {
-            "aggregated_value": aggr_data[rule.metric],
-            "normalized_value": normalized_data[rule.metric],
-            "rule_weight": weight,
-            "contribution_to_score": contribution
+            "value": raw,
+            "normalized": normalized,
+            "weight": weight,
+            "contribution": contribution
         }
 
-    # 🔹 Final payout
-    variable_base = incentive_plan.variable_base_amount or 0
-
-    final_incentive = (
-        incentive_plan.fixed_base_amount
-        + (variable_base * score)
-    )
+    final_amount = incentive_plan.fixed_base_amount + (score * (incentive_plan.variable_base_amount or 0))
 
     return {
-        "final_amount": final_incentive,
+        "final_amount": final_amount,
         "score": score,
         "metric_breakdown": met_breakdown
     }
